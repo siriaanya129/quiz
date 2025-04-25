@@ -2,6 +2,10 @@ import './app.css';
 import React, { useState } from 'react';
 import { questions } from './questions';
 
+// CHANGED: Import Firestore helpers and db instance
+import { collection, addDoc } from "firebase/firestore";
+import { db } from "./firebase";
+
 function App() {
   const [started, setStarted] = useState(false);
   const [nameStep, setNameStep] = useState(false);
@@ -24,14 +28,27 @@ function App() {
     return 0;
   }
 
+  // CHANGED: Save responses to Firestore instead of POSTing to /api/saveResponse
+  async function saveQuizResponse(finalAnswers) {
+    const responseData = {
+      timestamp: new Date().toISOString(),
+      responses: finalAnswers
+    };
+    try {
+      await addDoc(collection(db, "quizResponses"), responseData);
+    } catch (err) {
+      console.error('Failed to save response to Firestore:', err);
+    }
+  }
+
   async function handleAnswer(selectedIndex) {
     const q = questions[current];
     const isCorrect = selectedIndex === q.answer;
     const questionScore = getQuestionScore(isCorrect, q.difficulty);
 
     setScore(prev => prev + questionScore);
-    setUserAnswers(prev => [
-      ...prev,
+    const newUserAnswers = [
+      ...userAnswers,
       {
         question: q.question,
         difficulty: q.difficulty,
@@ -41,37 +58,14 @@ function App() {
         isCorrect,
         score: questionScore,
       }
-    ]);
+    ];
+    setUserAnswers(newUserAnswers);
 
     if (current < questions.length - 1) {
       setCurrent(current + 1);
     } else {
-      // SUBMISSION HANDLER: Save responses as JSON (without name)
-      const responseData = {
-        timestamp: new Date().toISOString(),
-        responses: [
-          ...userAnswers,
-          {
-            question: q.question,
-            difficulty: q.difficulty,
-            type: q.type,
-            selectedOption: q.options[selectedIndex],
-            correctOption: q.options[q.answer],
-            isCorrect,
-            score: questionScore,
-          }
-        ]
-      };
-      try {
-        await fetch('/api/saveResponse', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ responseData })
-        });
-      } catch (err) {
-        // You can show an error message to the user if needed
-        console.error('Failed to save response:', err);
-      }
+      // CHANGED: Save to Firestore on quiz completion
+      await saveQuizResponse(newUserAnswers);
       setShowScore(true);
     }
   }
@@ -101,7 +95,7 @@ function App() {
     return (
       <div className="quiz-viewport">
         <div className="name-container">
-          <h2>Try to be Anonymous</h2>
+          <h2>Be Anonymous</h2>
           <input
             className="name-input"
             type="text"
