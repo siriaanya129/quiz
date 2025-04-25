@@ -6,10 +6,9 @@ import { db } from "./firebase";
 
 function App() {
   const [started, setStarted] = useState(false);
-  const [emailStep, setEmailStep] = useState(false);
+  const [emailStep, setEmailStep] = useState(false); // CHANGED: now correctly controls the name step
   const [userEmail, setUserEmail] = useState('');
   const [emailError, setEmailError] = useState('');
-  const [emailChecked, setEmailChecked] = useState(false);
   const [alreadyAttempted, setAlreadyAttempted] = useState(false);
 
   const [userName, setUserName] = useState('');
@@ -38,10 +37,9 @@ function App() {
     return /^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(email);
   }
 
-  // Check Firestore for existing attempt
+  // CHANGED: Only set emailStep to true to go to name step
   async function handleEmailNext() {
     setEmailError('');
-    setEmailChecked(false);
     if (!isValidGmail(userEmail)) {
       setEmailError('Please enter a valid Gmail address.');
       return;
@@ -53,8 +51,7 @@ function App() {
     if (!querySnapshot.empty) {
       setAlreadyAttempted(true);
     } else {
-      setEmailChecked(true);
-      setNameStep(true);
+      setEmailStep(true); // FIXED: this now advances to the name step
     }
   }
 
@@ -62,7 +59,7 @@ function App() {
   async function saveQuizResponse(finalAnswers) {
     const responseData = {
       timestamp: new Date().toISOString(),
-      gmail: userEmail.trim().toLowerCase(), // Save Gmail for attempt check
+      gmail: userEmail.trim().toLowerCase(),
       responses: finalAnswers
     };
     try {
@@ -109,8 +106,8 @@ function App() {
           <h1> I just got promoted to a prof. so I'm gonna take a quick test on your 3rd sem course Stats!.. </h1>
           <p>
             Just kidding <br /> I need your help as samples for my main EL.. You can take a screenshot of this page and use it to blackmail me into manual labour I would help you in any way possible but before that i sincerely ask for your help!... <br /> <br /> Click below to start.<br /><br />
-            <b>Rules:</b> Correct: Easy(+2), Medium(+4), Hard(+6).<br />
-            Wrong: Easy(-4), Medium(-2), Hard(-1).
+            <b>Rules:</b> <br /> Correct Answer: Easy(+2), Medium(+4), Hard(+6).<br />
+            Wrong Answer: Easy(-4), Medium(-2), Hard(-1).
           </p>
           <button className="start-btn" onClick={() => setStarted(true)}>
             Start Quiz
@@ -131,7 +128,11 @@ function App() {
             type="email"
             placeholder="youraddress@gmail.com"
             value={userEmail}
-            onChange={e => setUserEmail(e.target.value)}
+            onChange={e => {
+              setUserEmail(e.target.value);
+              setAlreadyAttempted(false);
+              setEmailError('');
+            }}
             disabled={alreadyAttempted}
           />
           <button
@@ -152,8 +153,8 @@ function App() {
     );
   }
 
-  // Name input page (optional, keep if you want to display name in UI)
-  if (nameStep && !showScore) {
+  // Name input page
+  if (started && emailStep && !nameStep) {
     return (
       <div className="quiz-viewport">
         <div className="name-container">
@@ -167,7 +168,7 @@ function App() {
           />
           <button
             className="next-btn"
-            onClick={() => setEmailStep(true)}
+            onClick={() => setNameStep(true)}
             disabled={userName.trim().length === 0}
           >
             Next
