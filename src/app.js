@@ -1,15 +1,20 @@
 import './app.css';
 import React, { useState } from 'react';
 import { questions } from './questions';
-
-// CHANGED: Import Firestore helpers and db instance
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "./firebase";
 
 function App() {
   const [started, setStarted] = useState(false);
-  const [nameStep, setNameStep] = useState(false);
+  const [emailStep, setEmailStep] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [emailChecked, setEmailChecked] = useState(false);
+  const [alreadyAttempted, setAlreadyAttempted] = useState(false);
+
   const [userName, setUserName] = useState('');
+  const [nameStep, setNameStep] = useState(false);
+
   const [current, setCurrent] = useState(0);
   const [userAnswers, setUserAnswers] = useState([]);
   const [score, setScore] = useState(0);
@@ -28,10 +33,36 @@ function App() {
     return 0;
   }
 
-  // CHANGED: Save responses to Firestore instead of POSTing to /api/saveResponse
+  // Validate Gmail format
+  function isValidGmail(email) {
+    return /^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(email);
+  }
+
+  // Check Firestore for existing attempt
+  async function handleEmailNext() {
+    setEmailError('');
+    setEmailChecked(false);
+    if (!isValidGmail(userEmail)) {
+      setEmailError('Please enter a valid Gmail address.');
+      return;
+    }
+    // Query Firestore for this email
+    const responsesRef = collection(db, "quizResponses");
+    const q = query(responsesRef, where("gmail", "==", userEmail.trim().toLowerCase()));
+    const querySnapshot = await getDocs(q);
+    if (!querySnapshot.empty) {
+      setAlreadyAttempted(true);
+    } else {
+      setEmailChecked(true);
+      setNameStep(true);
+    }
+  }
+
+  // Save responses to Firestore (add Gmail)
   async function saveQuizResponse(finalAnswers) {
     const responseData = {
       timestamp: new Date().toISOString(),
+      gmail: userEmail.trim().toLowerCase(), // Save Gmail for attempt check
       responses: finalAnswers
     };
     try {
@@ -64,7 +95,6 @@ function App() {
     if (current < questions.length - 1) {
       setCurrent(current + 1);
     } else {
-      // CHANGED: Save to Firestore on quiz completion
       await saveQuizResponse(newUserAnswers);
       setShowScore(true);
     }
@@ -78,7 +108,7 @@ function App() {
         <h1>Hello people I'm Siri Kumar, the same boring Big dude from class </h1>
           <h1> I just got promoted to a prof. so I'm gonna take a quick test on your 3rd sem course Stats!.. </h1>
           <p>
-            Just kidding <br /> I need your help as samples for my main EL.. You can take a screenshot of this page and use it to blackmail me into manual labour I would help you in any way possible but before that i sincerely ask for your help!... <br /> Click below to start.<br />
+            Just kidding <br /> I need your help as samples for my main EL.. You can take a screenshot of this page and use it to blackmail me into manual labour I would help you in any way possible but before that i sincerely ask for your help!... <br /> <br /> Click below to start.<br /><br />
             <b>Rules:</b> Correct: Easy(+2), Medium(+4), Hard(+6).<br />
             Wrong: Easy(-4), Medium(-2), Hard(-1).
           </p>
@@ -90,22 +120,54 @@ function App() {
     );
   }
 
-  // Name input page
-  if (started && !nameStep) {
+  // Gmail input page
+  if (started && !emailStep) {
     return (
       <div className="quiz-viewport">
         <div className="name-container">
-          <h2>Be Anonymous</h2>
+          <h2>Enter Your Gmail</h2>
+          <input
+            className="name-input"
+            type="email"
+            placeholder="youraddress@gmail.com"
+            value={userEmail}
+            onChange={e => setUserEmail(e.target.value)}
+            disabled={alreadyAttempted}
+          />
+          <button
+            className="next-btn"
+            onClick={handleEmailNext}
+            disabled={userEmail.trim().length === 0 || alreadyAttempted}
+          >
+            Next
+          </button>
+          {emailError && <div style={{ color: "#c62828", marginTop: 10 }}>{emailError}</div>}
+          {alreadyAttempted && (
+            <div style={{ color: "#c62828", marginTop: 14, fontWeight: 600 }}>
+              This Gmail has already attempted the quiz.<br />Only one attempt is allowed.
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Name input page (optional, keep if you want to display name in UI)
+  if (nameStep && !showScore) {
+    return (
+      <div className="quiz-viewport">
+        <div className="name-container">
+          <h2>Enter Your Name</h2>
           <input
             className="name-input"
             type="text"
-            placeholder="Your nick-name"
+            placeholder="Your name"
             value={userName}
             onChange={e => setUserName(e.target.value)}
           />
           <button
             className="next-btn"
-            onClick={() => setNameStep(true)}
+            onClick={() => setEmailStep(true)}
             disabled={userName.trim().length === 0}
           >
             Next
@@ -115,14 +177,13 @@ function App() {
     );
   }
 
-  // Results page
+  // Results page (no retry button)
   if (showScore) {
     return (
       <div className="quiz-viewport">
         <div className="result-card">
           <h2>Thank you, {userName}!</h2>
           <div className="result-score">Your Score: {score}</div>
-          <button className="start-btn" onClick={() => window.location.reload()}>Retry Quiz</button>
           <div className="answers-list">
             <h3>Review:</h3>
             <ul>
