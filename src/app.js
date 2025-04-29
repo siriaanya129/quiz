@@ -6,14 +6,12 @@ import { db } from "./firebase";
 
 function App() {
   const [started, setStarted] = useState(false);
-  const [emailStep, setEmailStep] = useState(false); // CHANGED: now correctly controls the name step
+  const [emailStep, setEmailStep] = useState(false);
   const [userEmail, setUserEmail] = useState('');
   const [emailError, setEmailError] = useState('');
   const [alreadyAttempted, setAlreadyAttempted] = useState(false);
-
   const [userName, setUserName] = useState('');
   const [nameStep, setNameStep] = useState(false);
-
   const [current, setCurrent] = useState(0);
   const [userAnswers, setUserAnswers] = useState([]);
   const [score, setScore] = useState(0);
@@ -32,16 +30,18 @@ function App() {
     return 0;
   }
 
-  // Validate Gmail format
-  function isValidGmail(email) {
-    return /^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(email);
+  // Updated: Validate allowed email domains
+  function isValidEmail(email) {
+    const trimmed = email.trim().toLowerCase();
+    // Regex for valid email structure
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@(gmail\.com|hotmail\.com|yahoo\.com|xyz\.edu\.in)$/;
+    return emailRegex.test(trimmed);
   }
 
-  // CHANGED: Only set emailStep to true to go to name step
   async function handleEmailNext() {
     setEmailError('');
-    if (!isValidGmail(userEmail)) {
-      setEmailError('Please enter a valid Gmail address.');
+    if (!isValidEmail(userEmail)) {
+      setEmailError('Please enter a valid Gmail, Hotmail, Yahoo, or xyz.edu.in email address.');
       return;
     }
     // Query Firestore for this email
@@ -51,17 +51,29 @@ function App() {
     if (!querySnapshot.empty) {
       setAlreadyAttempted(true);
     } else {
-      setEmailStep(true); // FIXED: this now advances to the name step
+      setEmailStep(true);
     }
   }
 
-  // Save responses to Firestore (add Gmail)
+  // Save responses to Firestore with only required fields and final score
   async function saveQuizResponse(finalAnswers) {
+    // Map each answer to only required fields
+    const trimmedAnswers = finalAnswers.map(ans => ({
+      difficulty: ans.difficulty,
+      type: ans.type,
+      isCorrect: ans.isCorrect
+    }));
+
+    // Calculate the final score
+    const finalScore = finalAnswers.reduce((sum, ans) => sum + (ans.score || 0), 0);
+
     const responseData = {
       timestamp: new Date().toISOString(),
       gmail: userEmail.trim().toLowerCase(),
-      responses: finalAnswers
+      responses: trimmedAnswers,
+      finalScore
     };
+
     try {
       await addDoc(collection(db, "quizResponses"), responseData);
     } catch (err) {
@@ -73,22 +85,22 @@ function App() {
     const q = questions[current];
     const isCorrect = selectedIndex === q.answer;
     const questionScore = getQuestionScore(isCorrect, q.difficulty);
-
     setScore(prev => prev + questionScore);
     const newUserAnswers = [
       ...userAnswers,
       {
-        question: q.question,
+        // Only these fields are needed for storage now, but we keep others for UI if needed
         difficulty: q.difficulty,
         type: q.type,
-        selectedOption: q.options[selectedIndex],
-        correctOption: q.options[q.answer],
         isCorrect,
         score: questionScore,
+        // The following fields are not stored in Firebase anymore
+        question: q.question,
+        selectedOption: q.options[selectedIndex],
+        correctOption: q.options[q.answer],
       }
     ];
     setUserAnswers(newUserAnswers);
-
     if (current < questions.length - 1) {
       setCurrent(current + 1);
     } else {
@@ -102,63 +114,63 @@ function App() {
     return (
       <div className="quiz-viewport">
         <div className="welcome-container">
-        <h1>Hello people I'm Siri Kumar, the same boring Big dude from class </h1>
-          <h1> I just got promoted to a prof. so I'm gonna take a quick test on your 3rd sem course Stats!.. </h1>
+          <h1>Hey People Welcome to Stats quiz!..</h1>
           <p>
-            Just kidding <br /> I need your help as samples for my main EL.. You can take a screenshot of this page and use it to blackmail me into manual labour I would help you in any way possible but before that i sincerely ask for your help!... <br /> <br /> Click below to start.<br /><br />
-            <b>Rules:</b> <br /> Correct Answer: Easy(+2), Medium(+4), Hard(+6).<br />
-            Wrong Answer: Easy(-4), Medium(-2), Hard(-1).
+            I need your help as samples for my main EL.. You can take a screenshot of this page and use it to blackmail me into manual labour I would help you in any way possible but before that i sincerely ask for your help!...
           </p>
           <button className="start-btn" onClick={() => setStarted(true)}>
-            Start Quiz
+            Click below to start.
           </button>
+          <div style={{ marginTop: 32, textAlign: 'left' }}>
+            <b>Rules:</b>
+            <ul>
+              <li>Correct Answer: Easy(+2), Medium(+4), Hard(+6).</li>
+              <li>Wrong Answer: Easy(-4), Medium(-2), Hard(-1).</li>
+            </ul>
+          </div>
         </div>
       </div>
     );
   }
 
-  // Gmail input page
-  if (started && !emailStep) {
+  // Email step
+  if (!emailStep) {
     return (
       <div className="quiz-viewport">
         <div className="name-container">
-          <h2>Enter Your Gmail</h2>
+          <h2>Enter your Email to continue</h2>
           <input
             className="name-input"
             type="email"
-            placeholder="youraddress@gmail.com"
+            placeholder="yourname@gmail.com"
             value={userEmail}
-            onChange={e => {
-              setUserEmail(e.target.value);
-              setAlreadyAttempted(false);
-              setEmailError('');
-            }}
+            onChange={e => setUserEmail(e.target.value)}
             disabled={alreadyAttempted}
           />
+          {emailError && <div style={{ color: 'red', marginBottom: 8 }}>{emailError}</div>}
+          {alreadyAttempted && (
+            <div style={{ color: 'red', marginBottom: 8 }}>
+              You have already attempted this quiz.
+            </div>
+          )}
           <button
             className="next-btn"
             onClick={handleEmailNext}
-            disabled={userEmail.trim().length === 0 || alreadyAttempted}
+            disabled={alreadyAttempted}
           >
             Next
           </button>
-          {emailError && <div style={{ color: "#c62828", marginTop: 10 }}>{emailError}</div>}
-          {alreadyAttempted && (
-            <div style={{ color: "#c62828", marginTop: 14, fontWeight: 600 }}>
-              This Gmail has already attempted the quiz.<br />Only one attempt is allowed.
-            </div>
-          )}
         </div>
       </div>
     );
   }
 
-  // Name input page
-  if (started && emailStep && !nameStep) {
+  // Name step (if you want to collect name, otherwise skip)
+  if (!nameStep) {
     return (
       <div className="quiz-viewport">
         <div className="name-container">
-          <h2>Enter Your Name</h2>
+          <h2>Enter your Name</h2>
           <input
             className="name-input"
             type="text"
@@ -169,7 +181,7 @@ function App() {
           <button
             className="next-btn"
             onClick={() => setNameStep(true)}
-            disabled={userName.trim().length === 0}
+            disabled={!userName.trim()}
           >
             Next
           </button>
@@ -178,55 +190,49 @@ function App() {
     );
   }
 
-  // Results page (no retry button)
-  if (showScore) {
+  // Quiz page
+  if (!showScore) {
+    const q = questions[current];
     return (
       <div className="quiz-viewport">
-        <div className="result-card">
-          <h2>Thank you, {userName}!</h2>
-          <div className="result-score">Your Score: {score}</div>
-          <div className="answers-list">
-            <h3>Review:</h3>
-            <ul>
-              {userAnswers.map((ans, idx) => (
-                <li key={idx}>
-                  <strong>Q:</strong> {ans.question}<br />
-                  <span>
-                    <strong>Your answer:</strong> {ans.selectedOption} &nbsp;
-                    <strong>Correct:</strong> {ans.correctOption} &nbsp;
-                    <strong>Score:</strong> {ans.score}
-                  </span>
-                </li>
+        <div className="quiz-container">
+          <div className="question-card">
+            <h3>Question {current + 1} of {questions.length}</h3>
+            <h4>{q.question}</h4>
+            <div className="options-grid">
+              {q.options.map((opt, idx) => (
+                <button
+                  className="option-btn"
+                  key={idx}
+                  onClick={() => handleAnswer(idx)}
+                >
+                  {opt}
+                </button>
               ))}
-            </ul>
+            </div>
+            <div style={{ marginTop: 8, fontSize: 14, color: '#1976d2' }}>
+              <b>Difficulty:</b> {q.difficulty} &nbsp; <b>Type:</b> {q.type}
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
-  // Quiz page
-  const q = questions[current];
+  // Result page
   return (
     <div className="quiz-viewport">
-      <div className="quiz-container">
-        <div className="question-card">
-          <h3>Question {current + 1} / {questions.length}</h3>
-          <h4>{q.question}</h4>
-          <div className="options-grid">
-            {q.options.map((option, idx) => (
-              <button
-                key={idx}
-                className="option-btn"
-                onClick={() => handleAnswer(idx)}
-              >
-                {option}
-              </button>
+      <div className="result-card">
+        <h2>Quiz Complete!</h2>
+        <div className="result-score">Your Score: {score}</div>
+        <div className="answers-list">
+          <ul>
+            {userAnswers.map((ans, idx) => (
+              <li key={idx}>
+                <b>Q{idx + 1}:</b> {ans.isCorrect ? "Correct" : "Wrong"} &mdash; <b>Type:</b> {ans.type}, <b>Difficulty:</b> {ans.difficulty}
+              </li>
             ))}
-          </div>
-          <div style={{marginTop: 16, color: '#888', fontSize: 14}}>
-            <em>Difficulty: {q.difficulty}, Type: {q.type}</em>
-          </div>
+          </ul>
         </div>
       </div>
     </div>
